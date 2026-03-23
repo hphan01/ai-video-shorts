@@ -1,66 +1,122 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+'use client';
+
+import { useState, useCallback, useRef } from 'react';
+import PromptForm from '@/components/PromptForm';
+import VoiceSelector from '@/components/VoiceSelector';
+import ProgressBar from '@/components/ProgressBar';
+import VideoPreview from '@/components/VideoPreview';
+import StatusBanner from '@/components/StatusBanner';
+import RobotLogo from '@/components/RobotLogo';
+import type { JobStatus } from '@/lib/types';
+
+interface SSEPayload {
+  id: string;
+  status: JobStatus;
+  progress: number;
+  message: string;
+  outputPath?: string;
+}
 
 export default function Home() {
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [status, setStatus] = useState<JobStatus | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [message, setMessage] = useState('');
+  const [voice, setVoice] = useState('en-US-AriaNeural');
+  const [model, setModel] = useState('llama3.2:3b');
+  const esRef = useRef<EventSource | null>(null);
+
+  const handleGenerate = useCallback(
+    async (prompt: string) => {
+      esRef.current?.close();
+      setProgress(0);
+      setMessage('Starting…');
+      setStatus('pending');
+      setJobId(null);
+
+      let res: Response;
+      try {
+        res = await fetch('/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt, voice, model }),
+        });
+      } catch {
+        setStatus('error');
+        setMessage('Network error — could not reach the server.');
+        return;
+      }
+
+      if (!res.ok) {
+        const err = (await res.json()) as { error: string };
+        setStatus('error');
+        setMessage(`Failed to start: ${err.error}`);
+        return;
+      }
+
+      const { jobId: newJobId } = (await res.json()) as { jobId: string };
+      setJobId(newJobId);
+
+      const es = new EventSource(`/api/progress/${newJobId}`);
+      esRef.current = es;
+
+      es.onmessage = (e) => {
+        const data = JSON.parse(e.data as string) as SSEPayload;
+        setStatus(data.status);
+        setProgress(data.progress);
+        setMessage(data.message);
+        if (data.status === 'done' || data.status === 'error') {
+          es.close();
+        }
+      };
+
+      es.onerror = () => {
+        setStatus('error');
+        setMessage('Connection lost. Reload the page.');
+        es.close();
+      };
+    },
+    [voice, model],
+  );
+
+  const isLoading =
+    status !== null && status !== 'done' && status !== 'error';
+
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>To get started, edit the page.tsx file.</h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main className="main">
+      <header className="hero">
+        <RobotLogo />
+        <h1 className="title">AI Video Shorts</h1>
+        <p className="subtitle">
+          Generate TikTok &amp; YouTube Shorts from a text prompt — 100% free
+        </p>
+      </header>
+
+      <StatusBanner />
+
+      <section className="controls-row">
+        <VoiceSelector value={voice} onChange={setVoice} />
+        <div className="field">
+          <label htmlFor="model-input" className="field-label">
+            Ollama Model
+          </label>
+          <input
+            id="model-input"
+            type="text"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            placeholder="llama3.2:3b"
+            className="field-input"
+          />
         </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+      </section>
+
+      <PromptForm onSubmit={handleGenerate} isLoading={isLoading} />
+
+      {status && <ProgressBar progress={progress} message={message} />}
+
+      <VideoPreview jobId={jobId} status={status} />
+    </main>
   );
 }
+
