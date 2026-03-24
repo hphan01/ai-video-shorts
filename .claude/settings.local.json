@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where ffmpeg:*)",
+      "Bash(node:*)",
+      "Bash(\"C:/Users/Hai Phan/Documents/Develop/ai-video-shorts/node_modules/ffmpeg-static/ffmpeg.exe\" -version)",
+      "Bash(\"C:/Users/Hai Phan/Documents/Develop/ai-video-shorts/node_modules/ffmpeg-static/ffmpeg.exe\" -f concat -safe 0 -i /dev/null -t 0.1 -y /tmp/test.mp4)"
+    ]
+  }
+}

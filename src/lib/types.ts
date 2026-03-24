@@ -35,3 +35,25 @@ export interface VoiceOption {
   id: string;
   label: string;
 }
+
+export interface ModelRateLimit {
+  requestsPerDay: number;
+  requestsPerMinute: number;
+}
+
+export interface ModelUsage {
+  today: number;
+  thisMinute: number;
+}
+
+export interface ModelOption {
+  /** Format: "provider::modelName", e.g. "groq::llama-3.3-70b-versatile" */
+  id: string;
+  label: string;
+  provider: 'ollama' | 'openrouter';
+  available: boolean;
+  /** Reason for unavailability, e.g. "Add GROQ_API_KEY to .env.local" */
+  unavailableReason?: string;
+  limit?: ModelRateLimit;
+  usage?: ModelUsage;
+}

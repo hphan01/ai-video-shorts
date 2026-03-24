@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef } from 'react';
 import PromptForm from '@/components/PromptForm';
 import VoiceSelector from '@/components/VoiceSelector';
+import ModelSelector from '@/components/ModelSelector';
 import ProgressBar from '@/components/ProgressBar';
 import VideoPreview from '@/components/VideoPreview';
 import StatusBanner from '@/components/StatusBanner';
@@ -23,7 +24,7 @@ export default function Home() {
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState('');
   const [voice, setVoice] = useState('en-US-AriaNeural');
-  const [model, setModel] = useState('llama3.2:3b');
+  const [model, setModel] = useState('ollama::llama3.2:3b');
   const esRef = useRef<EventSource | null>(null);
 
   const handleGenerate = useCallback(
@@ -96,19 +97,7 @@ export default function Home() {
 
       <section className="controls-row">
         <VoiceSelector value={voice} onChange={setVoice} />
-        <div className="field">
-          <label htmlFor="model-input" className="field-label">
-            Ollama Model
-          </label>
-          <input
-            id="model-input"
-            type="text"
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            placeholder="llama3.2:3b"
-            className="field-input"
-          />
-        </div>
+        <ModelSelector value={model} onChange={setModel} />
       </section>
 
       <PromptForm onSubmit={handleGenerate} isLoading={isLoading} />

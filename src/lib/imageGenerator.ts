@@ -23,14 +23,39 @@ interface HordeStatusResponse {
   generations: HordeGeneration[];
 }
 
+const NEGATIVE_PROMPT =
+  'blurry, low quality, low resolution, worst quality, bad anatomy, bad hands, ' +
+  'extra fingers, missing fingers, deformed, ugly, duplicate, morbid, mutilated, ' +
+  'out of frame, extra limbs, disfigured, gross proportions, watermark, signature, ' +
+  'text, logo, generic, stock photo, cartoon, anime, 3d render, painting';
+
+// Preferred models — Stable Horde will use the first available worker that has one of these.
+// These models are known for accurate character/face detail and photorealism.
+const PREFERRED_MODELS = [
+  'Realistic Vision 5.1',
+  'Deliberate 3',
+  'Deliberate',
+  'Dreamshaper',
+];
+
 async function submitJob(prompt: string, attempt = 0): Promise<string> {
-  const enriched = `${prompt}, vertical portrait orientation, cinematic, high quality, 9:16 aspect ratio`;
+  const enriched =
+    `${prompt}, vertical portrait orientation, cinematic lighting, sharp focus, ` +
+    `highly detailed, 8k uhd, professional photography, 9:16 aspect ratio`;
   try {
     const res = await axios.post<{ id: string }>(
       `${HORDE_BASE}/generate/async`,
       {
-        prompt: enriched,
-        params: { width: 512, height: 768, steps: 20, cfg_scale: 7 },
+        prompt: `${enriched} ### ${NEGATIVE_PROMPT}`,
+        params: {
+          width: 512,
+          height: 768,
+          steps: 30,
+          cfg_scale: 7.5,
+          sampler_name: 'k_dpmpp_2m',
+          karras: true,
+        },
+        models: PREFERRED_MODELS,
         r2: true,
       },
       {

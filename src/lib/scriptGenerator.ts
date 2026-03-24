@@ -1,6 +1,12 @@
 import { Ollama } from 'ollama';
 import type { Scene, VideoScript } from './types';
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface OpenAIChatResponse {
+  choices: { message: { content: string } }[];
+}
+
 function isScene(obj: unknown): obj is Scene {
   return (
     typeof obj === 'object' &&
@@ -41,7 +47,7 @@ Required JSON structure:
 {
   "narration": "Full narration text to be read aloud. Target 60-80 words for ~30 seconds.",
   "scenes": [
-    { "imagePrompt": "Detailed visual description for AI image generation in portrait orientation", "caption": "Short punchy on-screen text (2-8 words)" },
+    { "imagePrompt": "<see rules below>", "caption": "Short punchy on-screen text (2-8 words)" },
     { "imagePrompt": "...", "caption": "..." },
     { "imagePrompt": "...", "caption": "..." },
     { "imagePrompt": "...", "caption": "..." },
@@ -51,20 +57,33 @@ Required JSON structure:
 
 Rules:
 - Exactly 5 scenes required
-- Each imagePrompt must be a vivid, detailed description suitable for AI image generation
 - Each caption must be 2-8 words, punchy and engaging
-- The narration should flow naturally and cover all 5 scene topics`;
+- The narration should flow naturally and cover all 5 scene topics
 
-export async function generateScript(
-  prompt: string,
-  model = 'llama3.2:3b',
-): Promise<VideoScript> {
+CRITICAL imagePrompt rules — this feeds directly into a Stable Diffusion image generator:
+1. PHYSICAL APPEARANCE FIRST: Always start with the subject's specific appearance.
+   Bad: "A scientist in a lab"
+   Good: "Dr. Elena, a 35-year-old woman with curly red hair in a loose bun, wearing a white lab coat over a teal blouse, round glasses, focused expression"
+2. CHARACTER CONSISTENCY: If the same character appears in multiple scenes, repeat their
+   EXACT same physical description (hair color, clothing, face features) word-for-word in every scene they appear in.
+3. THEN describe: action, environment, lighting, camera angle, time of day.
+4. END with style/quality tags: photorealistic, cinematic lighting, sharp focus, 8k, detailed, portrait orientation 9:16
+5. Include dominant colors and mood: warm golden lighting, dramatic shadows, vibrant colors, etc.
+6. Be SPECIFIC about setting: "cozy coffee shop with exposed brick walls and fairy lights" not just "coffee shop"
+7. Aim for 40-60 words per imagePrompt — more detail = more accurate image
+
+Example of a GOOD imagePrompt:
+"Marcus, a tall 28-year-old Black man with short natural hair and a well-trimmed beard, wearing a fitted grey hoodie and dark jeans, sitting cross-legged on a wooden floor surrounded by scattered notebooks and open textbooks, warm afternoon sunlight streaming through large windows behind him, determined focused expression, photorealistic, cinematic lighting, sharp focus, portrait orientation 9:16"`;
+
+// ─── Provider implementations ─────────────────────────────────────────────────
+
+async function generateWithOllama(prompt: string, modelName: string): Promise<VideoScript> {
   const ollama = new Ollama({ host: 'http://localhost:11434' });
 
   let response: Awaited<ReturnType<typeof ollama.chat>>;
   try {
     response = await ollama.chat({
-      model,
+      model: modelName,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: `Create a video short about: ${prompt}` },
@@ -81,32 +100,68 @@ export async function generateScript(
       );
     }
     const msg = err instanceof Error ? err.message : String(err);
-    // Surface model-not-found errors clearly
     if (msg.toLowerCase().includes('model') && msg.toLowerCase().includes('not found')) {
       throw new Error(
-        `Model "${model}" is not pulled. Run: ollama pull ${model}`,
+        `Model "${modelName}" is not pulled. Run: ollama pull ${modelName}`,
       );
     }
     throw new Error(`Ollama error: ${msg}`);
   }
 
+  return parseAndValidate(response.message.content, 'Ollama', prompt);
+}
+
+async function generateWithOpenAICompat(
+  prompt: string,
+  modelName: string,
+  baseUrl: string,
+  apiKey: string,
+  providerName: string,
+): Promise<VideoScript> {
+  const res = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: modelName,
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: `Create a video short about: ${prompt}` },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.7,
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`${providerName} API error ${res.status}: ${errText.slice(0, 300)}`);
+  }
+
+  const data = (await res.json()) as OpenAIChatResponse;
+  const content = data.choices?.[0]?.message?.content ?? '';
+  return parseAndValidate(content, providerName, prompt);
+}
+
+// ─── Shared parse + validate ───────────────────────────────────────────────────
+
+function parseAndValidate(raw: string, providerName: string, prompt: string): VideoScript {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(response.message.content);
+    parsed = JSON.parse(raw);
   } catch {
-    throw new Error(
-      `Ollama returned invalid JSON: ${response.message.content.slice(0, 200)}`,
-    );
+    throw new Error(`${providerName} returned invalid JSON: ${raw.slice(0, 200)}`);
   }
 
   if (!isVideoScript(parsed)) {
     throw new Error(
-      `Ollama response missing required fields. Got: ${JSON.stringify(parsed).slice(0, 200)}`,
+      `${providerName} response missing required fields. Got: ${JSON.stringify(parsed).slice(0, 200)}`,
     );
   }
 
   if (parsed.scenes.length !== 5) {
-    // Try to recover by padding or slicing
     while (parsed.scenes.length < 5) {
       parsed.scenes.push({ imagePrompt: prompt, caption: 'More details' });
     }
@@ -114,4 +169,44 @@ export async function generateScript(
   }
 
   return parsed;
+}
+
+// ─── Public entry point ────────────────────────────────────────────────────────
+
+/**
+ * Generate a video script using the specified AI model.
+ *
+ * @param prompt  The topic the video is about.
+ * @param model   Full model ID in "provider::modelName" format, e.g.
+ *                "ollama::llama3.2:3b", "groq::llama-3.3-70b-versatile".
+ *                For backwards-compat, bare names like "llama3.2:3b" are
+ *                treated as Ollama models.
+ */
+export async function generateScript(
+  prompt: string,
+  model = 'ollama::llama3.2:3b',
+): Promise<VideoScript> {
+  const separatorIdx = model.indexOf('::');
+  const provider = separatorIdx === -1 ? 'ollama' : model.slice(0, separatorIdx);
+  const modelName = separatorIdx === -1 ? model : model.slice(separatorIdx + 2);
+
+  switch (provider) {
+    case 'ollama':
+      return generateWithOllama(prompt, modelName);
+
+    case 'openrouter': {
+      const apiKey = process.env.OPENROUTER_API_KEY;
+      if (!apiKey) throw new Error('OPENROUTER_API_KEY is not set in environment variables.');
+      return generateWithOpenAICompat(
+        prompt,
+        modelName,
+        'https://openrouter.ai/api/v1',
+        apiKey,
+        'OpenRouter',
+      );
+    }
+
+    default:
+      throw new Error(`Unknown AI provider: "${provider}". Supported: ollama, openrouter`);
+  }
 }

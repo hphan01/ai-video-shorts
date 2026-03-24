@@ -85,14 +85,28 @@ export async function composeVideo(
   const concatFile = path.join(jobDir, 'concat.txt');
   await fs.writeFile(concatFile, concatContent, 'utf8');
 
-  // Build the -vf filter string:
+  // Build filter_complex string (concat demuxer + -vf crashes on this FFmpeg build)
   // 1. Scale to fit within 1080×1920, preserving aspect ratio
   // 2. Pad to exactly 1080×1920 with black bars
-  // 3. One drawtext overlay per scene, enabled only during its time window
+  // 3. Gradient scrim: stacked semi-transparent black boxes from 52% → bottom
+  // 4. One drawtext overlay per scene, enabled only during its time window
+  const gradientScrim = [
+    'drawbox=x=0:y=ih*0.52:w=iw:h=ih*0.08:color=black@0.08:t=fill',
+    'drawbox=x=0:y=ih*0.60:w=iw:h=ih*0.07:color=black@0.15:t=fill',
+    'drawbox=x=0:y=ih*0.67:w=iw:h=ih*0.06:color=black@0.25:t=fill',
+    'drawbox=x=0:y=ih*0.73:w=iw:h=ih*0.05:color=black@0.38:t=fill',
+    'drawbox=x=0:y=ih*0.78:w=iw:h=ih*0.05:color=black@0.52:t=fill',
+    'drawbox=x=0:y=ih*0.83:w=iw:h=ih*0.05:color=black@0.62:t=fill',
+    'drawbox=x=0:y=ih*0.88:w=iw:h=ih*0.12:color=black@0.72:t=fill',
+  ];
   const drawtextFilters = captions.map((caption, i) => {
     const startTime = (i * sceneDuration).toFixed(4);
     const endTime = ((i + 1) * sceneDuration).toFixed(4);
     const safeCaption = wrapCaption(sanitiseCaption(caption));
+    const enableExpr =
+      i === captions.length - 1
+        ? `gte(t,${startTime})`
+        : `gte(t,${startTime})*lt(t,${endTime})`;
     return (
       `drawtext=text='${safeCaption}':` +
       `fontfile='C\\:/Windows/Fonts/arialbd.ttf':` +
@@ -101,13 +115,14 @@ export async function composeVideo(
       `shadowx=2:shadowy=2:shadowcolor=black@0.6:` +
       `x=(w-text_w)/2:y=h*0.75:` +
       `line_spacing=8:` +
-      `enable='between(t,${startTime},${endTime})'`
+      `enable='${enableExpr}'`
     );
   });
 
-  const vfFilter = [
+  const filterChain = [
     'scale=1080:1920:force_original_aspect_ratio=decrease',
     'pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black',
+    ...gradientScrim,
     ...drawtextFilters,
   ].join(',');
 
@@ -117,9 +132,9 @@ export async function composeVideo(
       .inputOptions(['-f', 'concat', '-safe', '0'])
       .input(audioPath)
       .outputOptions([
-        '-map', '0:v:0',
+        '-filter_complex', `${filterChain}[outv]`,
+        '-map', '[outv]',
         '-map', '1:a:0',
-        '-vf', vfFilter,
         '-c:v', 'libx264',
         '-preset', 'fast',
         '-crf', '23',

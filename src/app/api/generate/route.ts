@@ -11,6 +11,7 @@ import { generateScript } from '@/lib/scriptGenerator';
 import { generateTTS } from '@/lib/ttsGenerator';
 import { generateImages } from '@/lib/imageGenerator';
 import { composeVideo } from '@/lib/videoComposer';
+import { recordUsage } from '@/lib/usageTracker';
 import type { GenerateRequest } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -23,7 +24,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const { prompt, voice = 'en-US-AriaNeural', model = 'llama3.2:3b' } =
+  const { prompt, voice = 'en-US-AriaNeural', model = 'ollama::llama3.2:3b' } =
     body as GenerateRequest;
 
   if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
@@ -63,6 +64,7 @@ async function runPipeline(
       progress: 10,
       message: 'Generating script with AI…',
     });
+    recordUsage(model);
     const script = await generateScript(prompt, model);
 
     updateJob(jobId, {

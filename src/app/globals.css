@@ -316,6 +316,56 @@ html, body {
   object-fit: contain;
 }
 
+/* ─── Model usage indicator ──────────────────────────────────────────────── */
+.model-usage {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  flex-wrap: wrap;
+  margin-top: 0.15rem;
+}
+
+.model-usage__item {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.model-usage__key {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.model-usage__bar-wrap {
+  width: 40px;
+  height: 4px;
+  background: var(--surface2);
+  border-radius: 99px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.model-usage__bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #c01010, #ff4040);
+  border-radius: 99px;
+  transition: width 0.4s ease;
+  min-width: 2px;
+}
+
+.model-usage__value {
+  white-space: nowrap;
+}
+
+.model-usage__sep {
+  color: var(--border);
+}
+
 /* ─── Status banner ───────────────────────────────────────────────────────── */
 .banner {
   width: 100%;
