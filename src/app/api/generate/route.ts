@@ -125,6 +125,7 @@ async function runPipeline(
     });
     scheduleCleanup(jobId, jobDir);
   } catch (err) {
+    console.error(`[generate] pipeline error for job ${jobId}:`, err);
     const message = err instanceof Error ? err.message : String(err);
     updateJob(jobId, {
       status: 'error',
