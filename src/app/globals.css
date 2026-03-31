@@ -485,3 +485,32 @@ html, body {
 }
 .robot-glint { animation: robot-shimmer 2.5s ease-in-out infinite; }
 
+/* ─── Reference image input ──────────────────────────────────────────────── */
+.reference-preview {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+.field-label-toggle {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0;
+}
+.reference-image-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.field-error {
+  font-size: 0.78rem;
+  color: var(--accent);
+}
+

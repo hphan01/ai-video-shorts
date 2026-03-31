@@ -24,7 +24,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const { prompt, voice = 'en-US-AriaNeural', model = 'ollama::llama3.2:3b' } =
+  const { prompt, voice = 'en-US-AriaNeural', model = 'ollama::llama3.2:3b', referenceImageUrl } =
     body as GenerateRequest;
 
   if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
@@ -42,12 +42,30 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   await fs.mkdir(jobDir, { recursive: true });
   await fs.mkdir(outputDir, { recursive: true });
 
+  let referenceImageBase64: string | undefined;
+  if (referenceImageUrl) {
+    try {
+      referenceImageBase64 = await loadReferenceImage(referenceImageUrl);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return NextResponse.json({ error: msg }, { status: 400 });
+    }
+  }
+
   createJob(jobId);
 
   // Run pipeline asynchronously — do not await
-  void runPipeline(jobId, jobDir, outputPath, prompt.trim(), voice, model);
+  void runPipeline(jobId, jobDir, outputPath, prompt.trim(), voice, model, referenceImageBase64);
 
   return NextResponse.json({ jobId });
+}
+
+async function loadReferenceImage(url: string): Promise<string> {
+  const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+  if (!res.ok) throw new Error(`Failed to fetch reference image: HTTP ${res.status}`);
+  const buf = await res.arrayBuffer();
+  const base64 = Buffer.from(buf).toString('base64');
+  return base64;
 }
 
 async function runPipeline(
@@ -57,6 +75,7 @@ async function runPipeline(
   prompt: string,
   voice: string,
   model: string,
+  referenceImageBase64?: string,
 ): Promise<void> {
   try {
     updateJob(jobId, {
@@ -82,6 +101,7 @@ async function runPipeline(
     const imagePaths = await generateImages(
       script.scenes.map((s) => s.imagePrompt),
       jobDir,
+      referenceImageBase64,
     );
 
     updateJob(jobId, {

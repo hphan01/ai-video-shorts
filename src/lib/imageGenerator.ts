@@ -38,26 +38,37 @@ const PREFERRED_MODELS = [
   'Dreamshaper',
 ];
 
-async function submitJob(prompt: string, attempt = 0): Promise<string> {
+async function submitJob(prompt: string, referenceImageBase64?: string, attempt = 0): Promise<string> {
   const enriched =
     `${prompt}, vertical portrait orientation, cinematic lighting, sharp focus, ` +
     `highly detailed, 8k uhd, professional photography, 9:16 aspect ratio`;
+
+  const params: Record<string, unknown> = {
+    width: 512,
+    height: 768,
+    steps: 30,
+    cfg_scale: 7.5,
+    sampler_name: 'k_dpmpp_2m',
+    karras: true,
+  };
+
+  const body: Record<string, unknown> = {
+    prompt: `${enriched} ### ${NEGATIVE_PROMPT}`,
+    params,
+    models: PREFERRED_MODELS,
+    r2: true,
+  };
+
+  if (referenceImageBase64) {
+    body.source_image = referenceImageBase64;
+    body.source_processing = 'img2img';
+    params.denoising_strength = 0.7;
+  }
+
   try {
     const res = await axios.post<{ id: string }>(
       `${HORDE_BASE}/generate/async`,
-      {
-        prompt: `${enriched} ### ${NEGATIVE_PROMPT}`,
-        params: {
-          width: 512,
-          height: 768,
-          steps: 30,
-          cfg_scale: 7.5,
-          sampler_name: 'k_dpmpp_2m',
-          karras: true,
-        },
-        models: PREFERRED_MODELS,
-        r2: true,
-      },
+      body,
       {
         headers: {
           apikey: HORDE_API_KEY,
@@ -70,11 +81,15 @@ async function submitJob(prompt: string, attempt = 0): Promise<string> {
     return res.data.id;
   } catch (err) {
     const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+    const responseBody = axios.isAxiosError(err) ? err.response?.data : undefined;
+    if (status === 400 && responseBody) {
+      console.error('Stable Horde 400 response:', JSON.stringify(responseBody, null, 2));
+    }
     if (status === 429 && attempt < 4) {
       // Exponential backoff: 2s, 4s, 8s, 16s
       const delay = 2_000 * Math.pow(2, attempt);
       await new Promise<void>((r) => setTimeout(r, delay));
-      return submitJob(prompt, attempt + 1);
+      return submitJob(prompt, referenceImageBase64, attempt + 1);
     }
     throw err;
   }
@@ -108,6 +123,7 @@ async function waitForJob(jobId: string): Promise<string> {
 export async function generateImages(
   imagePrompts: string[],
   jobDir: string,
+  referenceImageBase64?: string,
 ): Promise<string[]> {
   // With a real API key submit all jobs in parallel; anonymous key submits sequentially
   // to avoid 429 rate-limits (the retry backoff in submitJob handles any residual limits)
@@ -118,14 +134,18 @@ export async function generateImages(
     if (isAnon) {
       jobIds = [];
       for (const p of imagePrompts) {
-        jobIds.push(await submitJob(p));
+        jobIds.push(await submitJob(p, referenceImageBase64));
         await new Promise<void>((r) => setTimeout(r, 1_500));
       }
     } else {
-      jobIds = await Promise.all(imagePrompts.map((p) => submitJob(p)));
+      jobIds = await Promise.all(imagePrompts.map((p) => submitJob(p, referenceImageBase64)));
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    const resp = axios.isAxiosError(err) ? err.response?.data : undefined;
+    if (resp) {
+      console.error('Stable Horde submit error response:', JSON.stringify(resp, null, 2));
+    }
     throw new Error(`Failed to submit image jobs to Stable Horde: ${msg}`);
   }
 

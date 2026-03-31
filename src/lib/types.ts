@@ -29,6 +29,7 @@ export interface GenerateRequest {
   prompt: string;
   voice?: string;
   model?: string;
+  referenceImageUrl?: string;
 }
 
 export interface VoiceOption {

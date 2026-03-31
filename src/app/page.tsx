@@ -4,6 +4,7 @@ import { useState, useCallback, useRef } from 'react';
 import PromptForm from '@/components/PromptForm';
 import VoiceSelector from '@/components/VoiceSelector';
 import ModelSelector from '@/components/ModelSelector';
+import ReferenceImageInput from '@/components/ReferenceImageInput';
 import ProgressBar from '@/components/ProgressBar';
 import VideoPreview from '@/components/VideoPreview';
 import StatusBanner from '@/components/StatusBanner';
@@ -25,6 +26,7 @@ export default function Home() {
   const [message, setMessage] = useState('');
   const [voice, setVoice] = useState('en-US-AriaNeural');
   const [model, setModel] = useState('ollama::llama3.2:3b');
+  const [referenceImageUrl, setReferenceImageUrl] = useState('');
   const esRef = useRef<EventSource | null>(null);
 
   const handleGenerate = useCallback(
@@ -40,7 +42,7 @@ export default function Home() {
         res = await fetch('/api/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, voice, model }),
+          body: JSON.stringify({ prompt, voice, model, referenceImageUrl }),
         });
       } catch {
         setStatus('error');
@@ -77,7 +79,7 @@ export default function Home() {
         es.close();
       };
     },
-    [voice, model],
+    [voice, model, referenceImageUrl],
   );
 
   const isLoading =
@@ -98,6 +100,7 @@ export default function Home() {
       <section className="controls-row">
         <VoiceSelector value={voice} onChange={setVoice} />
         <ModelSelector value={model} onChange={setModel} />
+        <ReferenceImageInput value={referenceImageUrl} onChange={setReferenceImageUrl} disabled={isLoading} />
       </section>
 
       <PromptForm onSubmit={handleGenerate} isLoading={isLoading} />

@@ -4,7 +4,14 @@
       "Bash(where ffmpeg:*)",
       "Bash(node:*)",
       "Bash(\"C:/Users/Hai Phan/Documents/Develop/ai-video-shorts/node_modules/ffmpeg-static/ffmpeg.exe\" -version)",
-      "Bash(\"C:/Users/Hai Phan/Documents/Develop/ai-video-shorts/node_modules/ffmpeg-static/ffmpeg.exe\" -f concat -safe 0 -i /dev/null -t 0.1 -y /tmp/test.mp4)"
+      "Bash(\"C:/Users/Hai Phan/Documents/Develop/ai-video-shorts/node_modules/ffmpeg-static/ffmpeg.exe\" -f concat -safe 0 -i /dev/null -t 0.1 -y /tmp/test.mp4)",
+      "WebFetch(domain:horde-client.readthedocs.io)",
+      "WebSearch",
+      "Bash(npx tsc:*)",
+      "Bash(npx next:*)",
+      "Bash(npx eslint:*)",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "mcp__plugin_context7_context7__query-docs"
     ]
   }
 }
